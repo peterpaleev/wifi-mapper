@@ -49,12 +49,76 @@ struct SpatialTests {
         #expect(heat.cells.allSatisfy { $0.rssi >= -80.001 && $0.rssi <= -39.999 })
         #expect(heat.cells.contains { !$0.measured && $0.rssi > -75 && $0.rssi < -45 })
     }
+    @Test func heatAlgorithmsKeepMeasurementsAndBoundEstimates() throws {
+        let points=[point(0.1,0.1,-80),point(1.1,0.1,-40)]
+        for algorithm in HeatAlgorithm.allCases {
+            let heat=HeatmapBuilder.generate(points,radius:1,algorithm:algorithm)
+            #expect(heat.cells.filter {$0.measured}.count==2)
+            #expect(heat.cells.allSatisfy {$0.rssi>=(-80.001) && $0.rssi<=(-39.999)})
+            if algorithm == .measured {#expect(heat.cells.count==2)}
+            if algorithm == .nearest {#expect(heat.cells.allSatisfy {$0.rssi == -80 || $0.rssi == -40})}
+        }
+        let gaussian=HeatmapBuilder.generate(points,radius:1,algorithm:.gaussian)
+        let idw=HeatmapBuilder.generate(points,radius:1,algorithm:.idw)
+        let g=try #require(gaussian.cells.first {$0.x==0.375 && $0.z==0.125})
+        let i=try #require(idw.cells.first {$0.x==0.375 && $0.z==0.125})
+        #expect(abs(g.rssi-i.rssi)>0.1)
+    }
+    @Test func denseOutputPrioritizesMeasuredCellsAndIsDeterministic() {
+        let points=[point(0,0,-60),point(50,50,-40)]
+        let result=HeatmapBuilder.generate(points,maxCells:2)
+        #expect(result.cells.count==2);#expect(result.cells.allSatisfy {$0.measured})
+        let a=HeatmapBuilder.generate(points,maxCells:5),b=HeatmapBuilder.generate(points,maxCells:5)
+        #expect(a.cells.map(\.id)==b.cells.map(\.id));#expect(a.limited)
+        #expect(a.cells.filter {$0.measured}.count==2)
+    }
+    @Test func workBudgetFallsBackToMeasurementsWithoutBiasedFill() {
+        let points=(0..<250).map {point(Double($0)*0.5,0,-50)}
+        let result=HeatmapBuilder.generate(points,cellSize:0.1,radius:5)
+        #expect(result.limited);#expect(result.cells.count==250)
+        #expect(result.cells.allSatisfy {$0.measured})
+    }
+    @Test func unsafeHeatParametersDoNotTrap() {
+        let points=[point(0,0,-60),point(Double.greatestFiniteMagnitude,0,-40)]
+        #expect(HeatmapBuilder.generate(points,cellSize:.nan).cells.isEmpty)
+        #expect(HeatmapBuilder.generate(points,radius:.infinity).cells.isEmpty)
+        #expect(HeatmapBuilder.generate(points,cellSize:0.00001).cells.isEmpty)
+        #expect(HeatmapBuilder.generate(points,heightCenter:.nan).cells.isEmpty)
+        #expect(HeatmapBuilder.generate(points,algorithm:.measured).cells.count==1)
+    }
+    @Test func geographicRegistrationUsesRightHandedARAxes() throws {
+        let fix=GeoFix(latitude:0,longitude:0,altitude:10,horizontalAccuracy:5,verticalAccuracy:8,timestamp:Date(timeIntervalSince1970:0),phoneSeconds:1)
+        let south=GeoReference(fix:fix,position:.zero,bearing:180,segment:1)
+        #expect(south.coordinate(.zero).latitude==0)
+        #expect(south.coordinate(MapPosition(x:1,y:0,z:0)).longitude>0)
+        #expect(south.coordinate(MapPosition(x:0,y:0,z:1)).latitude<0)
+        let north=GeoReference(fix:fix,position:.zero,bearing:0,segment:1)
+        #expect(north.coordinate(MapPosition(x:1,y:0,z:0)).longitude<0)
+        #expect(north.coordinate(MapPosition(x:0,y:0,z:1)).latitude>0)
+        let east=GeoReference(fix:fix,position:MapPosition(x:5,y:0,z:7),bearing:90,segment:1)
+        #expect(east.coordinate(MapPosition(x:5,y:0,z:7)).latitude==0)
+        #expect(east.coordinate(MapPosition(x:5,y:0,z:8)).longitude>0)
+        let restored=try JSONDecoder().decode(GeoReference.self,from:JSONEncoder().encode(east))
+        #expect(restored.position==east.position);#expect(restored.fix.valid)
+    }
+    @Test func palettesClampAndSettingsRoundTrip() throws {
+        var settings=HeatSettings()
+        for palette in HeatPalette.allCases {
+            settings.palette=palette
+            for value in [-120.0,-70,0] {
+                let rgb=SignalPalette.rgb(value,settings:settings)
+                #expect([rgb.0,rgb.1,rgb.2].allSatisfy {$0>=0 && $0<=1})
+            }
+        }
+        #expect(try JSONDecoder().decode(HeatSettings.self,from:JSONEncoder().encode(settings))==settings)
+    }
     @Test func clockExpiresOldOffsets() {
         var model=ClockModel();model.add(ClockSample(t1:0,t2:10,t3:10,t4:20));model.add(ClockSample(t1:70_000_000,t2:70_000_200,t3:70_000_200,t4:70_000_400));#expect(model.samples.count==1)
     }
 }
 
 #if !canImport(MapperCore)
+import SQLite3
 struct SurveyStorageTests {
     @Test func durableRawAndAlignedRoundTrip() throws {
         let id=UUID();let folder=SurveyStore.root.appendingPathComponent(id.uuidString)
@@ -77,6 +141,35 @@ struct SurveyStorageTests {
         #expect(SurveyStore.list().first(where:{$0.id==id.uuidString})?.finished==true)
         let archive=try SurveyStore.export(folder);defer {try? FileManager.default.removeItem(at:archive)}
         let prefix=try Data(contentsOf:archive).prefix(2);#expect(prefix==Data([0x50,0x4b]))
+    }
+    @Test func meshUpdatesRemovalAndReferenceSurviveReopen() throws {
+        let id=UUID(),anchor=UUID();let folder=SurveyStore.root.appendingPathComponent(id.uuidString)
+        defer {try? FileManager.default.removeItem(at:folder)}
+        let fix=GeoFix(latitude:0,longitude:0,altitude:0,horizontalAccuracy:4,verticalAccuracy:5,timestamp:Date(timeIntervalSince1970:0),phoneSeconds:1)
+        do {
+            let store=try SurveyStore(id:id)
+            let face=SurfaceFace(a:.zero,b:MapPosition(x:1,y:0,z:0),c:MapPosition(x:0,y:0,z:1),wall:false)
+            try store.layer("mesh",SurfacePatch(id:anchor,phoneSeconds:1,segment:1,faces:[face],sourceFaceCount:1,sampled:false))
+            try store.layer("location",fix)
+            try store.layer("reference",GeoReference(fix:fix,position:.zero,bearing:180,segment:1))
+            let first=try SurveyStore.load(folder)
+            #expect(first.surfaces[anchor]?.faces.count==1);#expect(first.reference?.bearing==180)
+            try store.layer("mesh-removed",anchor)
+            try store.finish()
+        }
+        let loaded=try SurveyStore.load(folder)
+        #expect(loaded.surfaces.isEmpty);#expect(loaded.reference?.fix.horizontalAccuracy==4)
+    }
+    @Test func schemaOneSurveyLoadsWithoutMapLayers() throws {
+        let id=UUID();let folder=SurveyStore.root.appendingPathComponent(id.uuidString)
+        defer {try? FileManager.default.removeItem(at:folder)}
+        do {let store=try SurveyStore(id:id);try store.pose(MapPose(phoneSeconds:1,position:.zero,transform:[],tracking:"normal",segment:1))}
+        var database: OpaquePointer?
+        #expect(sqlite3_open(folder.appendingPathComponent("survey.sqlite").path,&database)==SQLITE_OK)
+        defer {sqlite3_close(database)}
+        #expect(sqlite3_exec(database,"DROP TABLE map_layers; PRAGMA user_version=1",nil,nil,nil)==SQLITE_OK)
+        let loaded=try SurveyStore.load(folder)
+        #expect(loaded.poses.count==1);#expect(loaded.surfaces.isEmpty);#expect(loaded.reference==nil)
     }
     @Test func interruptedSurveyRemainsReadable() throws {
         let id=UUID();let folder=SurveyStore.root.appendingPathComponent(id.uuidString);defer {try? FileManager.default.removeItem(at:folder)}

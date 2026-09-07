@@ -2,7 +2,7 @@ import SwiftUI
 import ARKit
 import SceneKit
 
-private func signalColor(_ rssi: Double) -> Color { let c=SignalPalette.rgb(rssi);return Color(red:Double(c.0),green:Double(c.1),blue:Double(c.2)) }
+private func signalColor(_ rssi: Double, settings: HeatSettings = HeatSettings()) -> Color { let c=SignalPalette.rgb(rssi,settings:settings);return Color(red:Double(c.0),green:Double(c.1),blue:Double(c.2)) }
 private let mapAccent=Color(red:0.2,green:0.86,blue:0.91)
 
 struct SurveyView: View {
@@ -12,6 +12,7 @@ struct SurveyView: View {
     @State private var showOptions=false
     @State private var showSurveys=false
     @State private var confirmNew=false
+    @State private var satelliteFit=0
     var body: some View {
         NavigationStack {
             VStack(spacing:0) {
@@ -21,12 +22,17 @@ struct SurveyView: View {
                 }.padding(.horizontal).padding(.vertical,8)
                 networkBar
                 ZStack(alignment:.topLeading) {
-                    CameraTrailView(tracker:mapping.tracker,poses:mapping.snapshot.poses,points:mapping.snapshot.points,revision:mapping.snapshot.revision,projectToFloor:mapping.floorProjection)
+                    CameraTrailView(tracker:mapping.tracker,poses:mapping.snapshot.poses,points:mapping.snapshot.points,revision:mapping.snapshot.revision,projectToFloor:mapping.floorProjection,settings:mapping.heatSettings)
                         .overlay(alignment:.center) { if !mapping.snapshot.recording { cameraEmpty } }
                         .opacity(mode==0 && !mapping.snapshot.reviewing ? 1 : 0)
                         .allowsHitTesting(mode==0 && !mapping.snapshot.reviewing)
                     if mode==1 || mapping.snapshot.reviewing {
-                        TopDownMap(poses:mapping.snapshot.poses,points:mapping.snapshot.points,cells:mapping.snapshot.heat.cells,position:mapping.snapshot.position)
+                        if mapping.satellite, mapping.snapshot.reference != nil {
+                            GeographicMap(snapshot:mapping.snapshot,settings:mapping.heatSettings,floors:mapping.showFloors,walls:mapping.showWalls,route:mapping.showRoute,status:$mapping.satelliteStatus,fitRevision:satelliteFit)
+                                .overlay(alignment:.topTrailing) {Button {satelliteFit += 1} label:{Image(systemName:"arrow.up.left.and.arrow.down.right").padding(10).background(.ultraThinMaterial,in:Circle())}.padding(12).accessibilityLabel("Fit satellite map")}
+                        } else {
+                        TopDownMap(poses:mapping.snapshot.poses,points:mapping.snapshot.points,cells:mapping.snapshot.heat.cells,position:mapping.snapshot.position,surfaces:mapping.snapshot.surfaces,mapBounds:mapping.snapshot.mapBounds,settings:mapping.heatSettings,showFloors:mapping.showFloors,showWalls:mapping.showWalls,showRoute:mapping.showRoute)
+                        }
                     }
                     VStack(alignment:.leading,spacing:8) {
                         trackingBadge
@@ -34,9 +40,12 @@ struct SurveyView: View {
                             Text(inspector.snapshot.compatible ? "Waiting for synchronized Wi-Fi samples" : "Position tracking active · connect ESP for signal colors")
                                 .font(.caption).padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10))
                         }
+                        if mode==1 && mapping.satellite && mapping.snapshot.reference != nil && !mapping.satelliteStatus.isEmpty {Text(mapping.satelliteStatus).font(.caption).padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10))}
+                        if mode==1 && mapping.satellite && mapping.snapshot.reference==nil {Text("Satellite needs a geographic reference · Map options → Geography").font(.caption).padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10))}
+                        if mode==1 && mapping.satellite,let reference=mapping.snapshot.reference {Text(String(format:"Approximate registration · GPS ±%.0f m",reference.fix.horizontalAccuracy)).font(.caption).padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10))}
                         if mapping.snapshot.reviewing { Text(mapping.snapshot.title).font(.caption.bold()).padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10)) }
                     }.padding(12)
-                    VStack { Spacer();HStack { signalLegend;Spacer() } }.padding(12).allowsHitTesting(false)
+                    VStack { Spacer();HStack { signalLegend;Spacer() } }.padding(.bottom,mapping.satellite && mapping.snapshot.reference != nil ? 36 : 0).padding(12).allowsHitTesting(false)
                 }.clipped()
                 bottomPanel
             }
@@ -87,9 +96,9 @@ struct SurveyView: View {
     }
     private var signalLegend: some View {
         VStack(alignment:.leading,spacing:4) {
-            HStack(spacing:0) { ForEach(0..<50,id:\.self) { i in signalColor(Double(i)-90).frame(width:3,height:5) } }.clipShape(Capsule())
-            HStack { Text("−90 weak");Spacer();Text("−40 strong") }.font(.system(size:9,design:.monospaced)).frame(width:150)
-            Text(mapping.heatEnabled && mode==1 ? "Heatmap: estimated · 1.5 m support" : "Gray: trajectory without aligned signal").font(.system(size:9))
+            HStack(spacing:0) { ForEach(0..<50,id:\.self) { i in signalColor(mapping.heatSettings.minimum+Double(i)/49*(mapping.heatSettings.maximum-mapping.heatSettings.minimum),settings:mapping.heatSettings).frame(width:3,height:5) } }.clipShape(Capsule())
+            HStack { Text("\(Int(mapping.heatSettings.minimum)) weak");Spacer();Text("\(Int(mapping.heatSettings.maximum)) strong") }.font(.system(size:9,design:.monospaced)).frame(width:150)
+            Text(mapping.heatEnabled && mode==1 ? "\(mapping.heatSettings.algorithm.rawValue) · \(mapping.heatSettings.radius.formatted()) m support" : "Gray: trajectory without aligned signal").font(.system(size:9))
         }.padding(9).background(.ultraThinMaterial,in:RoundedRectangle(cornerRadius:10))
     }
     private var bottomPanel: some View {
@@ -115,11 +124,31 @@ struct SurveyView: View {
     private var options: some View {
         NavigationStack {
             Form {
-                Section("Live surface") {
+                Section("Layers") {
+                    Toggle("Floor surfaces",isOn:$mapping.showFloors)
+                    Toggle("Walls",isOn:$mapping.showWalls)
+                    Toggle("Route and measurements",isOn:$mapping.showRoute)
+                    Toggle("Apple Maps satellite imagery",isOn:$mapping.satellite)
+                    Text("Satellite imagery needs internet and a geographic reference. Apple Maps attribution remains visible.").font(.caption).foregroundStyle(.secondary)
+                    Text(ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) ? "LiDAR floor and wall scanning is active during surveys. Slowly scan the floor and walls; only observed classified surfaces appear." : "LiDAR reconstruction is unavailable on this device. Route and RF mapping remain available.").font(.caption).foregroundStyle(.secondary)
+                    if mapping.snapshot.surfaceLimited {Text("Surface display is decimated. Small features may be missing.").font(.caption).foregroundStyle(.orange)}
+                }
+                Section("Geography") {GeoLayerOptions(mapping:mapping,geo:mapping.geo)}
+                Section("Heatmap") {
                     Toggle("Generate live heatmap",isOn:$mapping.heatEnabled)
                     Toggle("Keep one height level",isOn:$mapping.heightSlice)
                     if mapping.heightSlice { Stepper(String(format:"Height center: %.1f m ± 0.75 m",mapping.heightCenter),value:$mapping.heightCenter,in:-20...20,step:0.5) }
-                    Text("0.25 m spatial bins, inverse-distance interpolation within 1.5 m. Estimates do not model walls. Measured trail points remain visible.").font(.caption).foregroundStyle(.secondary)
+                    Picker("Grid size",selection:$mapping.heatSettings.cellSize) {
+                        Text("0.10 m").tag(0.1);Text("0.25 m").tag(0.25);Text("0.50 m").tag(0.5);Text("1.00 m").tag(1.0)
+                    }.onChange(of:mapping.heatSettings.cellSize) {_,size in mapping.heatSettings.radius=max(size,mapping.heatSettings.radius)}
+                    Picker("Fill empty space",selection:$mapping.heatSettings.algorithm) {ForEach(HeatAlgorithm.allCases,id:\.self) {Text($0.rawValue).tag($0)}}
+                    Stepper(String(format:"Support radius: %.1f m",mapping.heatSettings.radius),value:$mapping.heatSettings.radius,in:mapping.heatSettings.cellSize...5,step:0.25)
+                    Picker("Colors",selection:$mapping.heatSettings.palette) {ForEach(HeatPalette.allCases,id:\.self) {Text($0.rawValue).tag($0)}}
+                    Stepper("Weak: \(Int(mapping.heatSettings.minimum)) dBm",value:$mapping.heatSettings.minimum,in:-110...(mapping.heatSettings.maximum-5),step:5)
+                    Stepper("Strong: \(Int(mapping.heatSettings.maximum)) dBm",value:$mapping.heatSettings.maximum,in:(mapping.heatSettings.minimum+5)...(-10),step:5)
+                    LabeledContent("Opacity") {Slider(value:$mapping.heatSettings.opacity,in:0.1...1)}
+                    Button("Reset heatmap settings") {mapping.heatSettings=HeatSettings()}
+                    Text("Brighter cells contain measurements; dim cells estimate empty space within the support radius. Gaussian smooths nearby bins; nearest uses the closest bin; inverse distance blends by distance. Walls are visual context, not an RF attenuation model. Settings are remembered on this device.").font(.caption).foregroundStyle(.secondary)
                     if mapping.snapshot.heat.limited {Text("Surface limit reached. Raw data remains saved.").foregroundStyle(.orange)}
                 }
                 Section("Sensor") {
@@ -168,6 +197,12 @@ struct TopDownMap: View {
     let points: [TrailPoint]
     let cells: [HeatCell]
     let position: MapPosition
+    var surfaces: [SurfacePatch]=[]
+    var mapBounds: [MapPosition]=[]
+    var settings=HeatSettings()
+    var showFloors=true
+    var showWalls=true
+    var showRoute=true
     @State private var zoom=1.0
     @State private var pan=CGSize.zero
     @GestureState private var drag=CGSize.zero
@@ -175,8 +210,8 @@ struct TopDownMap: View {
     @State private var inspected: TrailPoint?
     var body: some View {
         GeometryReader { geometry in
-            let viewport=MapViewport(positions:poses.map(\.position)+points.map(\.position),size:geometry.size,zoom:zoom*magnification,pan:CGSize(width:pan.width+drag.width,height:pan.height+drag.height))
-            Canvas {context,size in
+            let viewport=MapViewport(positions:mapBounds.isEmpty ? poses.map(\.position)+points.map(\.position) : mapBounds,size:geometry.size,zoom:zoom*magnification,pan:CGSize(width:pan.width+drag.width,height:pan.height+drag.height))
+            Canvas(rendersAsynchronously:true) {context,size in
                 context.fill(Path(CGRect(origin:.zero,size:size)),with:.color(Color(red:0.035,green:0.055,blue:0.075)))
                 let step=max(0.5,pow(10,floor(log10(max(0.1,viewport.span/10)))))
                 let lowerX=floor(viewport.center.x-viewport.span),upperX=ceil(viewport.center.x+viewport.span)
@@ -188,17 +223,31 @@ struct TopDownMap: View {
                         var path=Path();path.move(to:viewport.project(MapPosition(x:viewport.center.x-viewport.span*2,y:0,z:z)));path.addLine(to:viewport.project(MapPosition(x:viewport.center.x+viewport.span*2,y:0,z:z)));context.stroke(path,with:.color(.white.opacity(0.07)),lineWidth:0.5)
                     }
                 }
+                if showFloors {
+                    for patch in surfaces {for face in patch.faces where !face.wall {
+                        var path=Path();path.move(to:viewport.project(face.a));path.addLine(to:viewport.project(face.b));path.addLine(to:viewport.project(face.c));path.closeSubpath()
+                        context.fill(path,with:.color(.white.opacity(0.12)))
+                    }}
+                }
                 for cell in cells {
                     let center=viewport.project(MapPosition(x:cell.x,y:0,z:cell.z));let side=cell.size*viewport.scale
-                    context.fill(Path(CGRect(x:center.x-side/2,y:center.y-side/2,width:side+0.3,height:side+0.3)),with:.color(signalColor(cell.rssi).opacity(cell.measured ? 0.62 : 0.3)))
+                    context.fill(Path(CGRect(x:center.x-side/2,y:center.y-side/2,width:side+0.3,height:side+0.3)),with:.color(signalColor(cell.rssi,settings:settings).opacity(settings.opacity*(cell.measured ? 1 : 0.5))))
                 }
+                if showWalls {
+                    for patch in surfaces {for face in patch.faces where face.wall {
+                        var path=Path();path.move(to:viewport.project(face.a));path.addLine(to:viewport.project(face.b));path.addLine(to:viewport.project(face.c));path.closeSubpath()
+                        context.stroke(path,with:.color(mapAccent.opacity(0.8)),lineWidth:2)
+                    }}
+                }
+                if showRoute {
                 for (a,b) in zip(poses,poses.dropFirst()) where a.segment==b.segment && a.normal && b.normal {
                     var path=Path();path.move(to:viewport.project(a.position));path.addLine(to:viewport.project(b.position));context.stroke(path,with:.color(.white.opacity(0.3)),lineWidth:2)
                 }
                 for (a,b) in zip(points,points.dropFirst()) where a.segment==b.segment && b.phoneSeconds-a.phoneSeconds<2 && a.position.distance(to:b.position)<2 {
-                    var path=Path();path.move(to:viewport.project(a.position));path.addLine(to:viewport.project(b.position));context.stroke(path,with:.color(signalColor(Double(b.rssi))),lineWidth:3)
+                    var path=Path();path.move(to:viewport.project(a.position));path.addLine(to:viewport.project(b.position));context.stroke(path,with:.color(signalColor(Double(b.rssi),settings:settings)),lineWidth:3)
                 }
-                for p in points {let xy=viewport.project(p.position);context.fill(Path(ellipseIn:CGRect(x:xy.x-2,y:xy.y-2,width:4,height:4)),with:.color(signalColor(Double(p.rssi))))}
+                for p in points {let xy=viewport.project(p.position);context.fill(Path(ellipseIn:CGRect(x:xy.x-2,y:xy.y-2,width:4,height:4)),with:.color(signalColor(Double(p.rssi),settings:settings)))}
+                }
                 let current=viewport.project(position);context.fill(Path(ellipseIn:CGRect(x:current.x-6,y:current.y-6,width:12,height:12)),with:.color(mapAccent));context.stroke(Path(ellipseIn:CGRect(x:current.x-8,y:current.y-8,width:16,height:16)),with:.color(.white),lineWidth:1.5)
                 if let origin=poses.first {context.draw(Text("START").font(.system(size:9,weight:.bold)).foregroundColor(.white),at:viewport.project(origin.position),anchor:.bottomTrailing)}
             }
@@ -239,6 +288,7 @@ struct CameraTrailView: UIViewRepresentable {
     let points: [TrailPoint]
     let revision: Int
     let projectToFloor: Bool
+    var settings=HeatSettings()
     func makeUIView(context:Context) -> ARSCNView {
         let view=ARSCNView(frame:.zero);view.session=tracker.session;view.session.delegate=tracker;view.scene=SCNScene();view.automaticallyUpdatesLighting=false;view.preferredFramesPerSecond=60
         view.scene.rootNode.addChildNode(context.coordinator.trail);view.scene.rootNode.addChildNode(context.coordinator.route)
@@ -247,10 +297,10 @@ struct CameraTrailView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {Coordinator()}
     func updateUIView(_ view: ARSCNView,context:Context) {
         let c=context.coordinator
-        let key="\(revision):\(points.count):\(poses.count):\(projectToFloor)"
+        let key="\(revision):\(points.count):\(poses.count):\(projectToFloor):\(settings)"
         guard key != c.key,ProcessInfo.processInfo.systemUptime-c.lastBuild>0.4 else {return};c.key=key;c.lastBuild=ProcessInfo.processInfo.systemUptime
         let floor=(poses.first?.position.y ?? 0)-1.2
-        c.trail.geometry=Self.geometry(points:points.map {($0.position,$0.segment,$0.phoneSeconds,SignalPalette.rgb(Double($0.rssi)))},radius:0.018,floor:projectToFloor ? floor : nil)
+        c.trail.geometry=Self.geometry(points:points.map {($0.position,$0.segment,$0.phoneSeconds,SignalPalette.rgb(Double($0.rssi),settings:settings))},radius:0.018,floor:projectToFloor ? floor : nil)
         c.route.geometry=Self.geometry(points:poses.map {($0.position,$0.normal ? $0.segment : -1,$0.phoneSeconds,(Float(0.45),Float(0.48),Float(0.52)))},radius:0.005,floor:projectToFloor ? floor : nil)
     }
     final class Coordinator {let trail=SCNNode();let route=SCNNode();var key="";var lastBuild=0.0}

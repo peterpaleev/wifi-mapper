@@ -399,10 +399,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Optionally record survey location and register your local Wi-Fi map on Apple Maps satellite imagery.";
                 INFOPLIST_KEY_NSCameraUsageDescription = "Use camera motion tracking to locate Wi-Fi measurements and draw your signal trail in the room.";
                 INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your ESP32 Wi-Fi measurement sensor.";
                 INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to the ESP32 over USB Ethernet.";
@@ -417,7 +418,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -437,10 +438,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Optionally record survey location and register your local Wi-Fi map on Apple Maps satellite imagery.";
                 INFOPLIST_KEY_NSCameraUsageDescription = "Use camera motion tracking to locate Wi-Fi measurements and draw your signal trail in the room.";
                 INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to your ESP32 Wi-Fi measurement sensor.";
                 INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to the ESP32 over USB Ethernet.";
@@ -455,7 +457,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapper";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -474,11 +476,11 @@
                 MAPPER_BUNDLE_PREFIX = org.example;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapperTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -497,11 +499,11 @@
                 MAPPER_BUNDLE_PREFIX = org.example;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapperTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -519,10 +521,10 @@
 			buildSettings = {
                 MAPPER_BUNDLE_PREFIX = org.example;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapperUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -540,10 +542,10 @@
 			buildSettings = {
                 MAPPER_BUNDLE_PREFIX = org.example;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "$(MAPPER_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(MAPPER_BUNDLE_PREFIX).wifi-mapperUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;

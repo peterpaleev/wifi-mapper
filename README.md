@@ -1,6 +1,6 @@
 # Wi-Fi Mapper — spatial surveys
 
-An iPhone + WeAct ESP32-S3 N8R8 instrument for live 2.4 GHz Wi-Fi mapping. Version 1.1 combines ARKit position tracking, a signal-colored 3D camera trail, a top-down trace, an optional live heatmap, and the original signal inspector.
+An iPhone + WeAct ESP32-S3 N8R8 instrument for live 2.4 GHz Wi-Fi mapping. Version 1.2 combines ARKit position tracking, a signal-colored 3D camera trail, a top-down trace, an optional live heatmap, and the original signal inspector.
 
 ## Make a survey
 
@@ -47,3 +47,7 @@ See [test evidence](docs/TESTING.md), [protocol](protocol/protocol.md), and [ear
 ## Contributing and license
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). MIT licensed; upstream dependencies retain their own licenses.
+
+## Spatial layers (1.2)
+
+LiDAR floor/wall observations, optional GPS registration and an Apple Maps satellite layer are available in Map options. Heatmap settings now include resolution, fill algorithm, support radius, palettes, signal limits and opacity. [Usage, API research and limitations](docs/SPATIAL_LAYERS.md) · [Release history](CHANGELOG.md). New spatial layers require real-device acceptance; a build or simulator fixture does not establish LiDAR/GPS accuracy.
