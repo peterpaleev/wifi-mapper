@@ -27,7 +27,10 @@ import Combine
         guard age>=0,age<10 else {status="Waiting for a fresh location";return}
         let value=GeoFix(latitude:location.coordinate.latitude,longitude:location.coordinate.longitude,altitude:location.altitude,horizontalAccuracy:location.horizontalAccuracy,verticalAccuracy:location.verticalAccuracy,timestamp:location.timestamp,phoneSeconds:ProcessInfo.processInfo.systemUptime-age)
         guard value.valid else {status="Location accuracy is insufficient (need ≤100 m)";return}
-        fix=value;status=String(format:"GPS ±%.0f m · altitude %.0f m",value.horizontalAccuracy,value.altitude);onFix?(value)
+        fix=value
+        status=String(format:"GPS ±%.0f m",value.horizontalAccuracy)
+        if value.verticalAccuracy>=0 {status += String(format:" · altitude %.0f m ±%.0f m",value.altitude,value.verticalAccuracy)}
+        onFix?(value)
     }
     func locationManager(_ manager: CLLocationManager,didFailWithError error: Error) {status=error.localizedDescription}
 }
@@ -75,7 +78,7 @@ struct GeographicMap: UIViewRepresentable {
         init(status: Binding<String>) {self.status=status}
         func mapViewWillStartLoadingMap(_ mapView: MKMapView) {status.wrappedValue="Loading satellite imagery…"}
         func mapViewDidFinishRenderingMap(_ mapView: MKMapView,fullyRendered: Bool) {
-            if fullyRendered {status.wrappedValue="";mapView.accessibilityValue="Satellite imagery ready"}
+            if fullyRendered {status.wrappedValue="";mapView.accessibilityValue="Map rendering complete"}
         }
         func mapViewDidFailLoadingMap(_ mapView: MKMapView,withError error: Error) {status.wrappedValue="Satellite imagery unavailable · check internet"}
 

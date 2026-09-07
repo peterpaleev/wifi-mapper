@@ -35,7 +35,7 @@ final class wifi_mapperUITests: XCTestCase {
         let app=XCUIApplication();app.launchArguments=["--ui-test-fixture","--ui-test-geographic-fixture"];app.launch()
         XCTAssertTrue(app.staticTexts["SIMULATED MAP"].waitForExistence(timeout:15))
         XCTAssertTrue(app.otherElements["satelliteMap"].waitForExistence(timeout:5))
-        let ready=NSPredicate(format:"value == %@","Satellite imagery ready")
+        let ready=NSPredicate(format:"value == %@","Map rendering complete")
         let imagery=XCTNSPredicateExpectation(predicate:ready,object:app.otherElements["satelliteMap"])
         XCTAssertEqual(XCTWaiter.wait(for:[imagery],timeout:20),.completed)
         capture("Simulated satellite registration and attribution")
