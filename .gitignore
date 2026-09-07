@@ -1,0 +1,27 @@
+.tooling/
+.build/
+.DS_Store
+firmware/build*/
+firmware/managed_components/
+firmware/sdkconfig
+firmware/sdkconfig.old
+**/xcuserdata/
+*.xcuserstate
+__pycache__/
+
+# Private machine configuration and collected data
+.env
+.env.*
+!.env.example
+.local/
+docs/local/
+docs/test-results/
+ios/Config/Local.xcconfig
+*.sqlite*
+*.xcresult/
+*.mobileprovision
+*.p12
+*.pem
+*.key
+DerivedData/
+.swiftpm/

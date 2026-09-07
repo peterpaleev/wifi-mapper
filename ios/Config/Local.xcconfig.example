@@ -1,0 +1,3 @@
+// Copy to Local.xcconfig (ignored). Use your Apple team and unique bundle prefix.
+MAPPER_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+MAPPER_BUNDLE_PREFIX = com.yourname
