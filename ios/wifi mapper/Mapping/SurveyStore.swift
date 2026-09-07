@@ -8,6 +8,9 @@ struct SurveySummary: Identifiable {
     let finished: Bool
 }
 struct SurveyData {
+    var surfaces: [UUID:SurfacePatch] = [:]
+    var surfaceLimited=false
+    var reference: GeoReference?
     var rawCount = 0
     var poses: [MapPose] = []
     var points: [TrailPoint] = []
@@ -29,7 +32,7 @@ final class SurveyStore {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories:true)
         guard sqlite3_open(folder.appendingPathComponent("survey.sqlite").path,&database) == SQLITE_OK else { throw SurveyStorageError(message:"Cannot open survey database") }
         do {
-            try execute("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA user_version=1;")
+            try execute("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA user_version=2;")
             try execute("""
             CREATE TABLE poses (id INTEGER PRIMARY KEY, phone_s REAL NOT NULL, x REAL,y REAL,z REAL, transform BLOB NOT NULL, tracking TEXT NOT NULL, segment INTEGER NOT NULL);
             CREATE INDEX pose_time ON poses(phone_s);
@@ -38,6 +41,7 @@ final class SurveyStore {
             CREATE TABLE aps (id INTEGER, updated_phone_s REAL, bssid TEXT, ssid TEXT, channel INTEGER, capability INTEGER, beacon_interval INTEGER);
             CREATE TABLE sync_samples (t1 REAL,t2 REAL,t3 REAL,t4 REAL);
             CREATE TABLE events (phone_s REAL,kind TEXT,details TEXT);
+            CREATE TABLE map_layers (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, payload BLOB NOT NULL, phone_s REAL NOT NULL);
             """)
             try manifest(finished:false)
         } catch { sqlite3_close(database); database=nil; throw error }
@@ -91,9 +95,17 @@ final class SurveyStore {
     func event(_ kind: String,_ details: String) throws {
         let s=try statement("INSERT INTO events VALUES(?,?,?)");sqlite3_bind_double(s,1,ProcessInfo.processInfo.systemUptime);text(s,2,kind);text(s,3,details);try step(s)
     }
+    func layer<T: Encodable>(_ kind: String, _ value: T) throws {
+        let json=try JSONEncoder().encode(value)
+        let data=kind == "mesh" ? try (json as NSData).compressed(using:.lzfse) as Data : json
+        let s=try statement("INSERT INTO map_layers(kind,payload,phone_s) VALUES(?,?,?)")
+        text(s,1,kind);sqlite3_bind_double(s,3,ProcessInfo.processInfo.systemUptime)
+        data.withUnsafeBytes { _ = sqlite3_bind_blob(s,2,$0.baseAddress,Int32($0.count),transient) }
+        try step(s)
+    }
     func finish() throws { try execute("PRAGMA wal_checkpoint(TRUNCATE)");try manifest(finished:true) }
     private func manifest(finished: Bool) throws {
-        let value: [String:Any]=["formatVersion":1,"schemaVersion":1,"sessionID":folder.lastPathComponent,"finished":finished,"updatedAt":ISO8601DateFormatter().string(from:Date()),"appVersion":"1.1","coordinateSystem":"ARKit right-handed meters; Y up; top-down X/Z; origin resets per survey","rigCalibration":"uncalibrated; positions are iPhone camera positions, keep ESP rigidly attached","alignment":"ESP capture time mapped by recorded four-timestamp sync; interpolate only normal poses in same tracking segment with gap <=250ms","heatmap":"derived IDW, 0.25m bins, 1.5m support radius; no wall model","rawDatabase":"survey.sqlite"]
+        let value: [String:Any]=["formatVersion":1,"schemaVersion":2,"sessionID":folder.lastPathComponent,"finished":finished,"updatedAt":ISO8601DateFormatter().string(from:Date()),"appVersion":"1.2","coordinateSystem":"ARKit right-handed meters; Y up; top-down X/Z; origin resets per survey","rigCalibration":"uncalibrated; positions are iPhone camera positions, keep ESP rigidly attached","alignment":"ESP capture time mapped by recorded four-timestamp sync; interpolate only normal poses in same tracking segment with gap <=250ms","heatmap":"configurable measured-only, IDW, nearest or Gaussian; bounded support; no wall attenuation model","mapLayers":"timestamped decimated ARKit floor/wall mesh observations and opt-in location fixes; manual geographic registration; map_layers table", "rawDatabase":"survey.sqlite"]
         try JSONSerialization.data(withJSONObject:value,options:[.prettyPrinted,.sortedKeys]).write(to:folder.appendingPathComponent("manifest.json"),options:.atomic)
     }
     static func list() -> [SurveySummary] {
@@ -120,6 +132,29 @@ final class SurveyStore {
             let id=UInt16(sqlite3_column_int(s,0));result.aps[id]=AccessPoint(id:id,bssid:String(cString:sqlite3_column_text(s,1)),ssid:String(cString:sqlite3_column_text(s,2)),channel:Int(sqlite3_column_int(s,3)),capability:UInt16(sqlite3_column_int(s,4)),beaconInterval:UInt16(sqlite3_column_int(s,5)))
         }
         try query("SELECT count(*) FROM wifi") { result.rawCount=Int(sqlite3_column_int64($0,0)) }
+        var hasLayers=false
+        try query("SELECT name FROM sqlite_master WHERE type='table' AND name='map_layers'") { _ in hasLayers=true }
+        if hasLayers {
+            var decodeError: Error?
+            try query("SELECT kind,payload FROM map_layers ORDER BY id") { s in
+                guard decodeError==nil,let bytes=sqlite3_column_blob(s,1) else {return}
+                let data=Data(bytes:bytes,count:Int(sqlite3_column_bytes(s,1)))
+                do {
+                    switch String(cString:sqlite3_column_text(s,0)) {
+                    case "mesh":
+                        let json=try (data as NSData).decompressed(using:.lzfse) as Data
+                        let patch=try JSONDecoder().decode(SurfacePatch.self,from:json);result.surfaces[patch.id]=patch
+                        if result.surfaces.count>256,let oldest=result.surfaces.values.min(by: {$0.phoneSeconds<$1.phoneSeconds}) {
+                            result.surfaces.removeValue(forKey:oldest.id);result.surfaceLimited=true
+                        }
+                    case "mesh-removed": result.surfaces.removeValue(forKey:try JSONDecoder().decode(UUID.self,from:data))
+                    case "reference": result.reference=try JSONDecoder().decode(GeoReference.self,from:data)
+                    default: break
+                    }
+                } catch {decodeError=error}
+            }
+            if let decodeError {throw decodeError}
+        }
         return result
     }
     static func export(_ folder: URL) throws -> URL {
