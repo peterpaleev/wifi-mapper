@@ -7,13 +7,13 @@ An iPhone + WeAct ESP32-S3 N8R8 instrument for live 2.4 GHz Wi-Fi mapping. Versi
 1. Connect the ESP32's **native USB** connector directly to the iPhone with a data cable. Keep the board fixed relative to the phone while walking.
 2. Open **Map → Connect USB**, allowing Local Network access. Tap **Start survey** and allow Camera access. Capture starts automatically when the sensor is connected.
 3. Move slowly while pointing the camera at a well-lit room. Choose the Wi-Fi radio from the network menu once discovered. **Map options → Lock radio to selected network** gives denser measurements; Controls can restore channel sweep.
-4. Walk through the area. **Camera** places the trail in 3D space; turn back to see the path behind you. Red means weak signal, green means strong. Gray marks position tracking without aligned signal.
+4. Walk through the area. **Camera** places the trail in 3D space; turn back to see the path behind you. The default palette uses red for weak signal and green for strong signal. Gray marks position tracking without aligned signal.
 5. Switch to **Top down** for the live X/Z trace. Pan, pinch, fit the map, or tap a measurement. Enable **Live heatmap** using the layers button or Map options.
 6. Tap **Stop & save**. The folder button reopens saved or interrupted surveys. Map options can prepare and share the full survey ZIP.
 
-Positions are local to each survey's starting point. Tracking uses the iPhone camera and motion sensors; it is not a georeferenced floor plan. Wi-Fi observations are matched to poses using synchronized capture timestamps. Tracking gaps stay unaligned. The antenna-to-camera offset is uncalibrated.
+Raw positions are local to each survey's starting point. Tracking uses the iPhone camera and motion sensors. Optional GPS/manual-bearing registration places this local map geographically without changing its raw coordinates; it is not a precision floor plan. Wi-Fi observations are matched to poses using synchronized capture timestamps. Tracking gaps stay unaligned. The antenna-to-camera offset is uncalibrated.
 
-The live heatmap averages 0.25 m spatial bins and estimates values within 1.5 m of measurements. It does not model walls. The default height band is ±0.75 m around the starting height; adjust it for different levels. The optional camera-trail projection is a visual plane 1.2 m below the origin, not a detected floor.
+By default, the live heatmap averages 0.25 m spatial bins and estimates values within 1.5 m of measurements. Grid size, fill algorithm, support radius and colors are configurable in Map options. It does not model walls. The default height band is ±0.75 m around the starting height; adjust it for different levels. The optional camera-trail projection is a visual plane 1.2 m below the origin, not a detected floor.
 
 Surveys save raw Wi-Fi, raw AR transforms, clock synchronization, AP metadata, quality events, and derived aligned points incrementally in SQLite under Documents/Surveys. Recording stays in the foreground; backgrounding ends and saves the survey. Display history is bounded while the raw database retains the full recording.
 
